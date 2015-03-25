@@ -1,6 +1,7 @@
-// C Code for driving Adafruit Mini PanTilt kit (http://www.adafruit.com/product/1967
-// via a pca9685 board from a Raspberry Pi B 
-// Servos connected to channels 0(Pan) and 1(Tilt) on pca9685
+// C Code for making a pan tilt static web cam using:
+// - Adafruit Mini PanTilt kit (http://www.adafruit.com/product/1967);
+// - pca9685 LED/Servo board;
+// - Raspberry Pi B 
 //
 // Original Python version https://github.com/pimoroni/PanTiltFacetracker/
 // Dependent on wiringPi for accessing I2C bus
@@ -8,130 +9,170 @@
 // Compile using:
 // gcc -Wall -lwiringPi -o pca9685 pca9685.c
 
+
 #include <stdio.h>
+#include <stdlib.h>
+#include <stddef.h>
+#include <string.h>
 #include <unistd.h>
 #include <inttypes.h>
 #include <math.h>
 #include <time.h>
 #include <wiringPi.h>
 #include <wiringPiI2C.h>
+#include "picampantilt.h"
 #include "pca9685.h"
 
 
-int main(){
+int main(int argc, char *argv[]){
+	int i;
 	uint16_t fd = 0;
 	fd = wiringPiI2CSetup(PCA9685_ADDR);
 	setUpDevice(fd);
 
-// Example drive both pan and tilt through 90 deg. 
-// Pan from 90(E) to 180(S). Tilt from 90(vert) to 0(hori)
-	int idx;
-	for(idx=0; idx < 90; idx++){
-		pan(fd,idx+90);
-		tilt(fd,90-idx);
-		usleep(125000);
+	if (argc > 1) {
+		for (i=1; i<argc; i++) {
+			if ((strcmp(argv[i],"-m")==0)||(strcmp(argv[i],"--move")==0)){
+				pan(fd, atoi(argv[i+1]));
+				tilt(fd,atoi(argv[i+2]));
+				i+=2;
+			} else if ((strcmp(argv[i],"-p")==0)||(strcmp(argv[i],"--pan")==0)){
+				pan(fd, atoi(argv[i+1]));
+				i+=1;
+			} else if ((strcmp(argv[i],"-t")==0)||(strcmp(argv[i],"--tilt")==0)){
+				tilt(fd,atoi(argv[i+1]));
+				i+=1;
+			} else if ((strcmp(argv[i],"-s")==0)||(strcmp(argv[i],"--snapshot")==0)){
+				cameraTask("capture","south.jpg");
+			}
+		}
+	}else{
+		printf("Test");
 	}
-
+// Pause to allow servos to move to position
+	secondSleep(1);
 // Stop the pca9685 driving the servos
 	sleepOn(fd);
 	return 0;
 }
 
 
-uint8_t setUpDevice(uint16_t fd){
-	setAllPWM(fd,0,0);
-	wiringPiI2CWriteReg8(fd,MODE2,OUTDRV);
-	wiringPiI2CWriteReg8(fd,MODE1,ALLCALL);
-	delay(0.005);
-	uint8_t mode1=wiringPiI2CReadReg8(fd,MODE1);
-	mode1=mode1 & SLEEP;
-	wiringPiI2CWriteReg8(fd,MODE1,mode1);
-	delay(0.005);
-	setPWMFreq(fd,50);
-	return 0;
+void cameraTask(char *task, char *argv) {
+//void cameraTask(int task) {
+//	int x;
+	printf("Test %s %s\n",task,argv);
+
 }
 
 
-uint8_t pan(uint16_t fd, int16_t deg){
-	move(fd, PAN, convAxis(PAN,deg));
-	return 0;
+void secondSleep(float seconds) {
+	usleep((long) (seconds*1000000.0));
 }
 
 
-uint8_t tilt(uint16_t fd, int16_t deg){
-	move(fd, TILT, convAxis(TILT,deg));
-	return 0;
+void fileCopy(char *sourceFileFull, char *targetFileFull) {
+	char buffer[100];
+	char bufferBash[100];
+	char fileFull[25];
+	char *fileName;
+	char *fileExt;  
+	time_t now;
+	struct tm * timeinfo;
+
+// write storage by date directories
+	now = time (NULL);
+	time ( &now);
+	timeinfo = localtime ( &now);
+	int written = sprintf(buffer, "mkdir -p %s", IMAGEPATH);
+	strftime(buffer+written, 100-written, "%Y", timeinfo);
+	system(buffer);
+	strftime(buffer+written, 100-written, "%Y/%Y-%m", timeinfo);
+	system(buffer);
+
+// copy source to IMAGEPATH with new target filename
+	strcpy(buffer, "");
+	snprintf(buffer,sizeof buffer, "cp %s %s%s",sourceFileFull,IMAGEPATH,targetFileFull);
+	system(buffer);
+	strcpy(fileFull,targetFileFull);
+	fileName = strtok(fileFull,".");
+	fileExt = strtok(NULL,".");
+
+// copy source to history with timestamped filename
+	strcpy(buffer, "");
+	strftime(buffer,sizeof buffer, "cp %%s %%s%Y/%Y-%m/%%s-%Y%m%d-%H%M%S.%%s", timeinfo);
+	snprintf(bufferBash,sizeof bufferBash, buffer,sourceFileFull,IMAGEPATH,fileName,fileExt);
+	system(bufferBash);
+
+   return;
 }
 
 
-uint8_t move(uint16_t fd, uint8_t s, int16_t deg){
-// Calculate pulse length
-	float pwm = 570.0 + ((deg/180.0) * 1700.0);
-	pwm = (4096.0/20000.0) * pwm;
-//	printf("deg:%d pwm:%f\n",deg,pwm);
-	setPWM(fd, s, 0, (int) pwm);
-	return 0;
+char * fileDateStamp() {
+	static char buf[150];
+   time_t curtime;
+   struct tm *loc_time;
+
+   //Getting current time of system
+   curtime = time (NULL);
+
+   // Converting current time to local time
+   loc_time = localtime (&curtime);
+
+   strftime (buf, 150, "%Y%m%d%H%M", loc_time);
+//	printf("%s \n",buf);
+	char *x;
+	x = (char*) &buf;
+	return x;
 }
 
+char *replace_str2(const char *str, const char *old, const char *new)
+{
+	char *ret, *r;
+	const char *p, *q;
+	size_t oldlen = strlen(old);
+	size_t count, retlen, newlen = strlen(new);
+	int samesize = (oldlen == newlen);
 
-// Shift North 0 deg/South 180 deg to anticlockwise servo 180 deg pan
-// Shift Up 90 deg/Hori 0 deg to top down servo 145 deg tilt
-// Includes offset and scale constants to correct pwm calculation for specific servos
-int16_t convAxis(uint8_t s, int16_t deg){
-	if (!s) {
-		if ((deg>PANMAX) || (deg<PANMIN)){
-			deg = (PANMAX-PANMIN)/2; //Out of Range then go to centre
-		}
-		deg = PANOFFSET+((270-deg)*PANSCALE);
-	} else {
-		if ((deg>TILTMAX) || (deg<TILTMIN)){
-			deg = TILTOFFSET+((90-TILTMIN)*TILTSCALE); // OoR go to minimum
-		}
-		deg = TILTOFFSET+((90-deg)*TILTSCALE);
+	if (!samesize) {
+		for (count = 0, p = str; (q = strstr(p, old)) != NULL; p = q + oldlen)
+			count++;
+		/* This is undefined if p - str > PTRDIFF_MAX */
+		retlen = p - str + strlen(p) + count * (newlen - oldlen);
+	} else
+		retlen = strlen(str);
+
+	if ((ret = malloc(retlen + 1)) == NULL)
+		return NULL;
+
+	r = ret, p = str;
+	while (1) {
+		/* If the old and new strings are different lengths - in other
+		 * words we have already iterated through with strstr above,
+		 * and thus we know how many times we need to call it - then we
+		 * can avoid the final (potentially lengthy) call to strstr,
+		 * which we already know is going to return NULL, by
+		 * decrementing and checking count.
+		 */
+		if (!samesize && !count--)
+			break;
+		/* Otherwise i.e. when the old and new strings are the same
+		 * length, and we don't know how many times to call strstr,
+		 * we must check for a NULL return here (we check it in any
+		 * event, to avoid further conditions, and because there's
+		 * no harm done with the check even when the old and new
+		 * strings are different lengths).
+		 */
+		if ((q = strstr(p, old)) == NULL)
+			break;
+		/* This is undefined if q - p > PTRDIFF_MAX */
+		ptrdiff_t l = q - p;
+		memcpy(r, p, l);
+		r += l;
+		memcpy(r, new, newlen);
+		r += newlen;
+		p = q + oldlen;
 	}
-	return deg;
-}
+	strcpy(r, p);
 
-
-uint8_t setPWMFreq(uint16_t fd, uint16_t freq){
-	float prescaleval = CLOCKFREQ;
-	prescaleval = prescaleval/4096.0;
-	prescaleval = prescaleval/freq;
-	prescaleval = prescaleval - 1.0;
-	float prescale = (prescaleval + 0.5);
-	uint8_t oldmode = wiringPiI2CReadReg8(fd,MODE1);
-	uint8_t newmode = (oldmode & 0x7F) | 0x10;
-	wiringPiI2CWriteReg8(fd,MODE1, newmode);
-	wiringPiI2CWriteReg8(fd,PRESCALE, (int)prescale);
-	wiringPiI2CWriteReg8(fd,MODE1, oldmode);
-	delay(0.005);
-	wiringPiI2CWriteReg8(fd,MODE1, oldmode | 0x80);
-	return 0;
-}
-
-
-uint8_t setPWM(uint16_t fd, uint8_t channel, uint16_t on, uint16_t off){
-//	printf("SetPWM:%d",off);
-	wiringPiI2CWriteReg8(fd, LED0_ON_L+4*channel, on & 0xFF);
-	wiringPiI2CWriteReg8(fd, LED0_ON_H+4*channel, on >> 8);
-	wiringPiI2CWriteReg8(fd, LED0_OFF_L+4*channel, off & 0xFF);
-	wiringPiI2CWriteReg8(fd, LED0_OFF_H+4*channel, off >> 8);
-	return 0;
-}
-
-
-uint8_t setAllPWM(uint16_t fd, uint16_t on, uint16_t off){
-	wiringPiI2CWriteReg8(fd, ALL_LED_ON_L, on & 0xFF);
-	wiringPiI2CWriteReg8(fd, ALL_LED_ON_H, on >> 8);
-	wiringPiI2CWriteReg8(fd, ALL_LED_OFF_L, off & 0xFF);
-	wiringPiI2CWriteReg8(fd, ALL_LED_OFF_H, off >> 8);
-	return 0;
-}
-
-
-uint8_t sleepOn(uint16_t fd){
-	uint8_t oldmode = wiringPiI2CReadReg8(fd,MODE1);
-	uint8_t newmode = (oldmode & 0x7F) | 0x10;
-	wiringPiI2CWriteReg8(fd,MODE1, newmode);
-	return 0;
+	return ret;
 }
