@@ -67,7 +67,8 @@ uint8_t tilt(uint16_t fd, int16_t deg){
 
 uint8_t move(uint16_t fd, uint8_t s, int16_t deg){
 // Calculate pulse length
-	float pwm = 570.0 + ((deg/180.0) * 1700.0);
+//	float pwm = 570.0 + ((deg/180.0) * 1700.0);
+	float pwm = PULSEMIN + ((deg/180.0) * PULSEINC);
 	pwm = (4096.0/20000.0) * pwm;
 //	printf("deg:%d pwm:%f\n",deg,pwm);
 	setPWM(fd, s, 0, (int) pwm);

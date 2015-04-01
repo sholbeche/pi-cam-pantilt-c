@@ -1,5 +1,5 @@
 #define DEF_FILENAME "capture.jpg"
-#define IMAGEPATH "../../images/"
+#define IMAGEPATH "../images/"
 
 void cameraTask(char *task, char *argv);
 void secondSleep(float seconds);

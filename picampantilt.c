@@ -1,13 +1,11 @@
-// C Code for making a pan tilt static web cam using:
+// C Code for integrating existing pca9685 project with Pi Camera:
 // - Adafruit Mini PanTilt kit (http://www.adafruit.com/product/1967);
 // - pca9685 LED/Servo board;
-// - Raspberry Pi B 
-//
-// Original Python version https://github.com/pimoroni/PanTiltFacetracker/
-// Dependent on wiringPi for accessing I2C bus
+// - Raspberry Pi B;
+// - Raspberry Pi Camera. 
 //
 // Compile using:
-// gcc -Wall -lwiringPi -o pca9685 pca9685.c
+// gcc -Wall -lwiringPi -o picampantilt picampantilt.c pca9685.c
 
 
 #include <stdio.h>
@@ -43,14 +41,29 @@ int main(int argc, char *argv[]){
 				tilt(fd,atoi(argv[i+1]));
 				i+=1;
 			} else if ((strcmp(argv[i],"-s")==0)||(strcmp(argv[i],"--snapshot")==0)){
-				cameraTask("capture","south.jpg");
+				cameraTask(argv[i+1],argv[i+2]);
+				i+=2;
+			} else if ((strcmp(argv[i],"-h")==0)||(strcmp(argv[i],"--help")==0)){
+				printf("Usage: picampantilt [OPTION] [arg1] [arg2]...\n");
+				printf("Operate the Raspberry Pi Cam on a pan tilt servo.\n");
+				printf("\n");
+				printf("Options:\n");
+				printf(" -h, --help\n");
+				printf(" -m, --move arg1 arg2       Pan to arg1 and tilt to arg2 degrees\n");
+				printf(" -p, --pan arg1             Pan to arg1 degrees\n");
+				printf(" -s, --snapshot arg1 arg2   If arg1=capture, then take picture with raspistill extra arguments arg2\n");
+				printf("                            If arg1=patrol3, then take picture at 90,180,270 degrees with extra arguments arg2\n");
+				printf("                            If arg1=patrol5, then take picture at 90,135,180,225,270 degrees with extra arguments arg2\n");
+				printf(" -t, --tilt arg1            Tilt to arg1 degrees\n");
+				printf("\n");
 			}
+// Pause to allow servos to move to position
+			secondSleep(1);
 		}
 	}else{
-		printf("Test");
+		printf("picampantilt: no arguments supplied\n");
+		printf("Try 'picampantilt --help' for more information.\n");
 	}
-// Pause to allow servos to move to position
-	secondSleep(1);
 // Stop the pca9685 driving the servos
 	sleepOn(fd);
 	return 0;
@@ -58,10 +71,56 @@ int main(int argc, char *argv[]){
 
 
 void cameraTask(char *task, char *argv) {
-//void cameraTask(int task) {
-//	int x;
-	printf("Test %s %s\n",task,argv);
+	char buffer[100];
+	uint16_t fd = 0;
+	fd = wiringPiI2CSetup(PCA9685_ADDR);
 
+	if (strcmp(task,"capture")==0){
+		snprintf(buffer,sizeof buffer, "raspistill -n -rot 180 -o %s%s",IMAGEPATH,argv);
+		system(buffer);
+	} else if (strcmp(task,"patrol3")==0){
+		pan(fd, 90);
+//		tilt(fd,20);
+		snprintf(buffer,sizeof buffer, "raspistill -n -rot 180 %s -o %s%s",argv,IMAGEPATH,DEF_FILENAME);
+		system(buffer);
+		fileCopy(DEF_FILENAME,"east.jpg");
+		pan(fd, 180);
+		snprintf(buffer,sizeof buffer, "raspistill -n -rot 180 %s -o %s%s",argv,IMAGEPATH,DEF_FILENAME);
+		system(buffer);
+		fileCopy(DEF_FILENAME,"south.jpg");
+		pan(fd, 270);
+		snprintf(buffer,sizeof buffer, "raspistill -n -rot 180 %s -o %s%s",argv,IMAGEPATH,DEF_FILENAME);
+		system(buffer);
+		fileCopy(DEF_FILENAME,"west.jpg");
+// Protect camera from solar exposure by pointing downwards
+		tilt(fd,-45);
+		pan(fd, 180);
+	} else if (strcmp(task,"patrol5")==0){
+		pan(fd, 90);
+//		tilt(fd,20);
+		snprintf(buffer,sizeof buffer, "raspistill -n -rot 180 %s -o %s%s",argv,IMAGEPATH,DEF_FILENAME);
+		system(buffer);
+		fileCopy(DEF_FILENAME,"east.jpg");
+		pan(fd, 135);
+		snprintf(buffer,sizeof buffer, "raspistill -n -rot 180 %s -o %s%s",argv,IMAGEPATH,DEF_FILENAME);
+		system(buffer);
+		fileCopy(DEF_FILENAME,"southeast.jpg");
+		pan(fd, 180);
+		snprintf(buffer,sizeof buffer, "raspistill -n -rot 180 %s -o %s%s",argv,IMAGEPATH,DEF_FILENAME);
+		system(buffer);
+		fileCopy(DEF_FILENAME,"south.jpg");
+		pan(fd, 225);
+		snprintf(buffer,sizeof buffer, "raspistill -n -rot 180 %s -o %s%s",argv,IMAGEPATH,DEF_FILENAME);
+		system(buffer);
+		fileCopy(DEF_FILENAME,"southwest.jpg");
+		pan(fd, 270);
+		snprintf(buffer,sizeof buffer, "raspistill -n -rot 180 %s -o %s%s",argv,IMAGEPATH,DEF_FILENAME);
+		system(buffer);
+		fileCopy(DEF_FILENAME,"west.jpg");
+// Protect camera from solar exposure by pointing downwards
+		tilt(fd,-45);
+		pan(fd, 180);
+	}
 }
 
 
@@ -91,7 +150,7 @@ void fileCopy(char *sourceFileFull, char *targetFileFull) {
 
 // copy source to IMAGEPATH with new target filename
 	strcpy(buffer, "");
-	snprintf(buffer,sizeof buffer, "cp %s %s%s",sourceFileFull,IMAGEPATH,targetFileFull);
+	snprintf(buffer,sizeof buffer, "cp %s%s %s%s",IMAGEPATH,sourceFileFull,IMAGEPATH,targetFileFull);
 	system(buffer);
 	strcpy(fileFull,targetFileFull);
 	fileName = strtok(fileFull,".");
@@ -99,8 +158,8 @@ void fileCopy(char *sourceFileFull, char *targetFileFull) {
 
 // copy source to history with timestamped filename
 	strcpy(buffer, "");
-	strftime(buffer,sizeof buffer, "cp %%s %%s%Y/%Y-%m/%%s-%Y%m%d-%H%M%S.%%s", timeinfo);
-	snprintf(bufferBash,sizeof bufferBash, buffer,sourceFileFull,IMAGEPATH,fileName,fileExt);
+	strftime(buffer,sizeof buffer, "cp %%s%%s %%s%Y/%Y-%m/%%s-%Y%m%d-%H%M%S.%%s", timeinfo);
+	snprintf(bufferBash,sizeof bufferBash, buffer,IMAGEPATH,sourceFileFull,IMAGEPATH,fileName,fileExt);
 	system(bufferBash);
 
    return;

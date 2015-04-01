@@ -28,15 +28,16 @@
 #define TILT			(1)
 #define FREQUENCY		(50)
 #define CLOCKFREQ		(25000000)
-#define PANOFFSET		(1)
-#define PANSCALE		(1.4)
-#define TILTOFFSET		(30)
-#define TILTSCALE		(1.43)
+#define PANOFFSET		(0)
+#define PANSCALE		(1.0)
+#define TILTOFFSET		(25)
+#define TILTSCALE		(1.07)
 #define PANMAX			(270)
 #define PANMIN			(90)
 #define TILTMAX			(90)
 #define TILTMIN			(-45)
-
+#define PULSEMIN		(610)
+#define PULSEINC		(2120)
 
 uint8_t setUpDevice(uint16_t fd);
 uint8_t setPWMFreq(uint16_t fd, uint16_t freq);
